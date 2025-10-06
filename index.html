@@ -5,25 +5,61 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PSI 实时读数表 | data.gov.sg</title>
   <style>
+    :root{
+      --ok:#10b981;     /* 绿 */
+      --err:#ef4444;    /* 红 */
+      --warn:#f59e0b;   /* 橙 */
+      --muted:#6b7280;  /* 灰 */
+      --bg:#f7f7f7;
+    }
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", sans-serif; margin: 24px; }
     h1 { margin: 0 0 8px; font-size: 20px; }
-    .meta { color: #555; margin-bottom: 16px; }
+    .meta { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom: 12px; }
     button { padding: 6px 12px; border: 1px solid #ccc; background:#fff; cursor:pointer; border-radius:6px; }
     button:active { transform: translateY(1px); }
+
+    /* 状态条 */
+    .status {
+      display:flex; align-items:center; gap:10px;
+      padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff;
+    }
+    .badge { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-size:12px; }
+    .dot { width:8px; height:8px; border-radius:50%; background: var(--muted); }
+    .badge.ok   { color:var(--ok);   border:1px solid var(--ok)22;   background: #ecfdf5; }
+    .badge.err  { color:var(--err);  border:1px solid var(--err)22;  background: #fef2f2; }
+    .badge.warn { color:var(--warn); border:1px solid var(--warn)22; background: #fffbeb; }
+    .badge.muted{ color:var(--muted);border:1px solid #e5e7eb;       background:#fff; }
+    .badge.ok .dot{ background:var(--ok);}
+    .badge.err .dot{ background:var(--err);}
+    .badge.warn .dot{ background:var(--warn);}
+    .badge.muted .dot{ background:var(--muted);}
+
+    .kv { font-size:12px; color:#374151; }
+    .kv b { color:#111827; }
+    .muted { color:#6b7280; font-size:12px; }
+
     table { border-collapse: collapse; width: 100%; margin-top: 12px; }
     th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: right; }
     th:first-child, td:first-child { text-align: left; white-space: nowrap; }
-    thead th { background: #f7f7f7; position: sticky; top: 0; }
-    .error { color: #b00020; margin-top: 12px; }
-    .muted { color: #777; font-size: 12px; }
+    thead th { background: var(--bg); position: sticky; top: 0; }
+    .error { color: var(--err); margin-top: 12px; }
   </style>
 </head>
 <body>
   <h1>新加坡 PSI 实时读数（data.gov.sg）</h1>
+
   <div class="meta">
-    <span id="ts">更新时间：—</span>
+    <div class="status" aria-live="polite" aria-atomic="true">
+      <span id="badge" class="badge muted"><span class="dot"></span><span id="badgeText">待命</span></span>
+      <div class="kv">HTTP：<b id="http">—</b></div>
+      <div class="kv">延迟：<b id="lat">—</b></div>
+      <div class="kv">最后成功：<b id="lastOk">—</b></div>
+      <div class="kv">网络：<b id="net">—</b></div>
+    </div>
     <button id="refresh">刷新</button>
   </div>
+
+  <div class="muted">数据源：<code>https://api.data.gov.sg/v1/environment/psi</code></div>
 
   <table id="table">
     <thead>
@@ -37,18 +73,13 @@
         <th>central</th>
       </tr>
     </thead>
-    <tbody id="tbody">
-      <!-- 动态填充 -->
-    </tbody>
+    <tbody id="tbody"></tbody>
   </table>
 
-  <div id="note" class="muted">
-    注：所有数据直接来自 <code>https://api.data.gov.sg/v1/environment/psi</code> 的最新响应。
-  </div>
   <div id="err" class="error"></div>
 
   <script>
-    // 要求列出的 12 个读数键（官方 PSI API 常见字段）
+    // 12 个读数键
     const READING_KEYS = [
       "o3_sub_index",
       "pm10_twenty_four_hourly",
@@ -63,8 +94,6 @@
       "psi_twenty_four_hourly",
       "o3_eight_hour_max"
     ];
-
-    // 友好标签（中英对照，方便老师看得懂你不是乱抄）
     const LABELS = {
       o3_sub_index: "臭氧 O₃ 子指数 (o3_sub_index)",
       pm10_twenty_four_hourly: "PM10 24小时平均 (pm10_twenty_four_hourly)",
@@ -79,57 +108,97 @@
       psi_twenty_four_hourly: "PSI 24小时指数 (psi_twenty_four_hourly)",
       o3_eight_hour_max: "O₃ 8小时最大值 (o3_eight_hour_max)"
     };
-
     const REGIONS = ["national", "north", "south", "east", "west", "central"];
 
-    const $tbody = document.getElementById("tbody");
-    const $ts = document.getElementById("ts");
-    const $err = document.getElementById("err");
+    const $tbody   = document.getElementById("tbody");
+    const $err     = document.getElementById("err");
     const $refresh = document.getElementById("refresh");
+
+    // 状态元素
+    const $badge = document.getElementById("badge");
+    const $badgeText = document.getElementById("badgeText");
+    const $http = document.getElementById("http");
+    const $lat = document.getElementById("lat");
+    const $lastOk = document.getElementById("lastOk");
+    const $net = document.getElementById("net");
+
+    function fmtTs(ts){
+      try { return new Date(ts).toLocaleString("zh-SG"); }
+      catch { return "—"; }
+    }
+
+    function setBadge(cls, text){
+      $badge.className = "badge " + cls;
+      $badgeText.textContent = text;
+    }
+
+    function setNetworkBadge(){
+      if (!navigator.onLine) {
+        setBadge("warn","离线");
+        $net.textContent = "offline";
+      } else {
+        // 不覆盖请求时的连接状态，只更新网络提示
+        $net.textContent = "online";
+      }
+    }
 
     async function fetchPSI() {
       $err.textContent = "";
+      setBadge("muted","连接中…");
+      $http.textContent = "—";
+      $lat.textContent  = "—";
+
+      const t0 = performance.now();
       try {
-        const resp = await fetch("https://api.data.gov.sg/v1/environment/psi");
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const resp = await fetch("https://api.data.gov.sg/v1/environment/psi", { cache: "no-store" });
+        const t1 = performance.now();
+        $http.textContent = resp.status;
+        $lat.textContent  = `${Math.round(t1 - t0)} ms`;
+
+        if (!resp.ok) {
+          setBadge("err","失败");
+          throw new Error(`HTTP ${resp.status}`);
+        }
+
         const data = await resp.json();
-
-        // 时间戳
         const ts = data?.items?.[0]?.update_timestamp || data?.items?.[0]?.timestamp;
-        $ts.textContent = ts ? `更新时间：${new Date(ts).toLocaleString("zh-SG")}` : "更新时间：—";
-
-        // 读数对象
-        const readings = data?.items?.[0]?.readings || {};
-        renderTable(readings);
+        renderTable(data?.items?.[0]?.readings || {});
+        setBadge("ok","已连接");
+        $lastOk.textContent = fmtTs(ts || Date.now());
       } catch (e) {
-        $err.textContent = "获取失败：" + e.message + "。检查网络或稍后再试。";
+        // 常见：CORS 或网络错误
+        setBadge(navigator.onLine ? "err" : "warn", navigator.onLine ? "失败" : "离线");
+        $err.textContent = "获取失败：" + (e?.message || e) + "。";
+      } finally {
+        setNetworkBadge();
       }
     }
 
     function renderTable(readings) {
-      $tbody.innerHTML = ""; // 清空
+      $tbody.innerHTML = "";
       READING_KEYS.forEach(key => {
-        const row = document.createElement("tr");
+        const tr = document.createElement("tr");
+        const name = document.createElement("td");
+        name.textContent = LABELS[key] || key;
+        tr.appendChild(name);
 
-        // 第一列：友好标签（带原字段名）
-        const nameCell = document.createElement("td");
-        nameCell.textContent = LABELS[key] || key;
-        row.appendChild(nameCell);
-
-        // 六个区域值
         REGIONS.forEach(r => {
           const td = document.createElement("td");
           const val = readings?.[key]?.[r];
-          td.textContent = (val === undefined || val === null) ? "—" : Number(val).toFixed(1);
-          row.appendChild(td);
+          td.textContent = (val === undefined || val === null || val === "") ? "—" : Number(val).toFixed(1);
+          tr.appendChild(td);
         });
-
-        $tbody.appendChild(row);
+        $tbody.appendChild(tr);
       });
     }
 
+    // 事件
     $refresh.addEventListener("click", fetchPSI);
-    // 进入页面立即拉一次
+    window.addEventListener("online",  setNetworkBadge);
+    window.addEventListener("offline", setNetworkBadge);
+
+    // 初始化
+    setNetworkBadge();
     fetchPSI();
   </script>
 </body>
