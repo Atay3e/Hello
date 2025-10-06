@@ -1,205 +1,49 @@
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PSI 实时读数表 | data.gov.sg</title>
-  <style>
-    :root{
-      --ok:#10b981;     /* 绿 */
-      --err:#ef4444;    /* 红 */
-      --warn:#f59e0b;   /* 橙 */
-      --muted:#6b7280;  /* 灰 */
-      --bg:#f7f7f7;
-    }
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", sans-serif; margin: 24px; }
-    h1 { margin: 0 0 8px; font-size: 20px; }
-    .meta { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom: 12px; }
-    button { padding: 6px 12px; border: 1px solid #ccc; background:#fff; cursor:pointer; border-radius:6px; }
-    button:active { transform: translateY(1px); }
+<!DOCTYPE html><html lang="zh"><meta charset="utf-8">
+<title>PSI 实时读数（data.gov.sg）</title>
+<body style="font-family:system-ui;margin:20px;font-size:14px">
+<h3>PSI 实时读数（data.gov.sg）</h3>
+<div>API: <code>https://api.data.gov.sg/v1/environment/psi</code></div>
+<table border="1" cellspacing="0" cellpadding="6">
+<thead><tr>
+<th>读数项<br><small>Reading Type</small></th>
+<th>national</th><th>north</th><th>south</th><th>east</th><th>west</th><th>central</th>
+</tr></thead><tbody id="tb"></tbody></table>
 
-    /* 状态条 */
-    .status {
-      display:flex; align-items:center; gap:10px;
-      padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff;
-    }
-    .badge { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-size:12px; }
-    .dot { width:8px; height:8px; border-radius:50%; background: var(--muted); }
-    .badge.ok   { color:var(--ok);   border:1px solid var(--ok)22;   background: #ecfdf5; }
-    .badge.err  { color:var(--err);  border:1px solid var(--err)22;  background: #fef2f2; }
-    .badge.warn { color:var(--warn); border:1px solid var(--warn)22; background: #fffbeb; }
-    .badge.muted{ color:var(--muted);border:1px solid #e5e7eb;       background:#fff; }
-    .badge.ok .dot{ background:var(--ok);}
-    .badge.err .dot{ background:var(--err);}
-    .badge.warn .dot{ background:var(--warn);}
-    .badge.muted .dot{ background:var(--muted);}
+<script>
+const KEYS=[
+  ["臭氧子指数","O₃ Sub-index","o3_sub_index"],
+  ["PM10 24小时平均","PM10 24-hour","pm10_twenty_four_hourly"],
+  ["PM10 子指数","PM10 Sub-index","pm10_sub_index"],
+  ["一氧化碳子指数","CO Sub-index","co_sub_index"],
+  ["PM2.5 24小时平均","PM2.5 24-hour","pm25_twenty_four_hourly"],
+  ["二氧化硫子指数","SO₂ Sub-index","so2_sub_index"],
+  ["CO 8小时最大值","CO 8-hour max","co_eight_hour_max"],
+  ["NO₂ 1小时最大值","NO₂ 1-hour max","no2_one_hour_max"],
+  ["SO₂ 24小时平均","SO₂ 24-hour","so2_twenty_four_hourly"],
+  ["PM2.5 子指数","PM2.5 Sub-index","pm25_sub_index"],
+  ["PSI 24小时指数","PSI 24-hour","psi_twenty_four_hourly"],
+  ["O₃ 8小时最大值","O₃ 8-hour max","o3_eight_hour_max"]
+];
+const REG=["national","north","south","east","west","central"];
 
-    .kv { font-size:12px; color:#374151; }
-    .kv b { color:#111827; }
-    .muted { color:#6b7280; font-size:12px; }
-
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: right; }
-    th:first-child, td:first-child { text-align: left; white-space: nowrap; }
-    thead th { background: var(--bg); position: sticky; top: 0; }
-    .error { color: var(--err); margin-top: 12px; }
-  </style>
-</head>
-<body>
-  <h1>新加坡 PSI 实时读数（data.gov.sg）</h1>
-
-  <div class="meta">
-    <div class="status" aria-live="polite" aria-atomic="true">
-      <span id="badge" class="badge muted"><span class="dot"></span><span id="badgeText">待命</span></span>
-      <div class="kv">HTTP：<b id="http">—</b></div>
-      <div class="kv">延迟：<b id="lat">—</b></div>
-      <div class="kv">最后成功：<b id="lastOk">—</b></div>
-      <div class="kv">网络：<b id="net">—</b></div>
-    </div>
-    <button id="refresh">刷新</button>
-  </div>
-
-  <div class="muted">数据源：<code>https://api.data.gov.sg/v1/environment/psi</code></div>
-
-  <table id="table">
-    <thead>
-      <tr>
-        <th>读数项 (字段)</th>
-        <th>national</th>
-        <th>north</th>
-        <th>south</th>
-        <th>east</th>
-        <th>west</th>
-        <th>central</th>
-      </tr>
-    </thead>
-    <tbody id="tbody"></tbody>
-  </table>
-
-  <div id="err" class="error"></div>
-
-  <script>
-    // 12 个读数键
-    const READING_KEYS = [
-      "o3_sub_index",
-      "pm10_twenty_four_hourly",
-      "pm10_sub_index",
-      "co_sub_index",
-      "pm25_twenty_four_hourly",
-      "so2_sub_index",
-      "co_eight_hour_max",
-      "no2_one_hour_max",
-      "so2_twenty_four_hourly",
-      "pm25_sub_index",
-      "psi_twenty_four_hourly",
-      "o3_eight_hour_max"
-    ];
-    const LABELS = {
-      o3_sub_index: "臭氧 O₃ 子指数 (o3_sub_index)",
-      pm10_twenty_four_hourly: "PM10 24小时平均 (pm10_twenty_four_hourly)",
-      pm10_sub_index: "PM10 子指数 (pm10_sub_index)",
-      co_sub_index: "一氧化碳 CO 子指数 (co_sub_index)",
-      pm25_twenty_four_hourly: "PM2.5 24小时平均 (pm25_twenty_four_hourly)",
-      so2_sub_index: "二氧化硫 SO₂ 子指数 (so2_sub_index)",
-      co_eight_hour_max: "CO 8小时最大值 (co_eight_hour_max)",
-      no2_one_hour_max: "NO₂ 1小时最大值 (no2_one_hour_max)",
-      so2_twenty_four_hourly: "SO₂ 24小时平均 (so2_twenty_four_hourly)",
-      pm25_sub_index: "PM2.5 子指数 (pm25_sub_index)",
-      psi_twenty_four_hourly: "PSI 24小时指数 (psi_twenty_four_hourly)",
-      o3_eight_hour_max: "O₃ 8小时最大值 (o3_eight_hour_max)"
-    };
-    const REGIONS = ["national", "north", "south", "east", "west", "central"];
-
-    const $tbody   = document.getElementById("tbody");
-    const $err     = document.getElementById("err");
-    const $refresh = document.getElementById("refresh");
-
-    // 状态元素
-    const $badge = document.getElementById("badge");
-    const $badgeText = document.getElementById("badgeText");
-    const $http = document.getElementById("http");
-    const $lat = document.getElementById("lat");
-    const $lastOk = document.getElementById("lastOk");
-    const $net = document.getElementById("net");
-
-    function fmtTs(ts){
-      try { return new Date(ts).toLocaleString("zh-SG"); }
-      catch { return "—"; }
-    }
-
-    function setBadge(cls, text){
-      $badge.className = "badge " + cls;
-      $badgeText.textContent = text;
-    }
-
-    function setNetworkBadge(){
-      if (!navigator.onLine) {
-        setBadge("warn","离线");
-        $net.textContent = "offline";
-      } else {
-        // 不覆盖请求时的连接状态，只更新网络提示
-        $net.textContent = "online";
-      }
-    }
-
-    async function fetchPSI() {
-      $err.textContent = "";
-      setBadge("muted","连接中…");
-      $http.textContent = "—";
-      $lat.textContent  = "—";
-
-      const t0 = performance.now();
-      try {
-        const resp = await fetch("https://api.data.gov.sg/v1/environment/psi", { cache: "no-store" });
-        const t1 = performance.now();
-        $http.textContent = resp.status;
-        $lat.textContent  = `${Math.round(t1 - t0)} ms`;
-
-        if (!resp.ok) {
-          setBadge("err","失败");
-          throw new Error(`HTTP ${resp.status}`);
-        }
-
-        const data = await resp.json();
-        const ts = data?.items?.[0]?.update_timestamp || data?.items?.[0]?.timestamp;
-        renderTable(data?.items?.[0]?.readings || {});
-        setBadge("ok","已连接");
-        $lastOk.textContent = fmtTs(ts || Date.now());
-      } catch (e) {
-        // 常见：CORS 或网络错误
-        setBadge(navigator.onLine ? "err" : "warn", navigator.onLine ? "失败" : "离线");
-        $err.textContent = "获取失败：" + (e?.message || e) + "。";
-      } finally {
-        setNetworkBadge();
-      }
-    }
-
-    function renderTable(readings) {
-      $tbody.innerHTML = "";
-      READING_KEYS.forEach(key => {
-        const tr = document.createElement("tr");
-        const name = document.createElement("td");
-        name.textContent = LABELS[key] || key;
-        tr.appendChild(name);
-
-        REGIONS.forEach(r => {
-          const td = document.createElement("td");
-          const val = readings?.[key]?.[r];
-          td.textContent = (val === undefined || val === null || val === "") ? "—" : Number(val).toFixed(1);
-          tr.appendChild(td);
-        });
-        $tbody.appendChild(tr);
-      });
-    }
-
-    // 事件
-    $refresh.addEventListener("click", fetchPSI);
-    window.addEventListener("online",  setNetworkBadge);
-    window.addEventListener("offline", setNetworkBadge);
-
-    // 初始化
-    setNetworkBadge();
-    fetchPSI();
-  </script>
-</body>
-</html>
+(async()=>{
+  let d;
+  try{
+    const r=await fetch("https://api.data.gov.sg/v1/environment/psi",{cache:"no-store"});
+    d=await r.json();
+  }catch(e){
+    tb.innerHTML=`<tr><td colspan="7">获取失败</td></tr>`;return;
+  }
+  const rd=d?.items?.[0]?.readings||{};
+  const tb=document.getElementById("tb");
+  KEYS.forEach(([cn,en,k])=>{
+    let row=`<td><div style='font-size:16px'>${cn}</div><div style='font-size:12px;color:#555'>${en}<br><small>${k}</small></div></td>`;
+    REG.forEach(r=>{
+      const v=rd?.[k]?.[r];
+      row+=`<td>${v==null?'—':(+v).toFixed(1)}</td>`;
+    });
+    tb.insertAdjacentHTML("beforeend","<tr>"+row+"</tr>");
+  });
+})();
+</script>
+</body></html>
