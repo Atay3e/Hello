@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>城市呼吸 Urban Pulse</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: "Noto Sans SC", sans-serif;
+      background: radial-gradient(circle at 30% 30%, #0a0f1c, #12293a, #1c465a);
+      color: white;
+      overflow: hidden;
+    }
+
+    header {
+      text-align: center;
+      padding: 20px;
+      font-size: 2em;
+      color: #8be9fd;
+      text-shadow: 0 0 15px #00e5ff;
+      letter-spacing: 2px;
+    }
+
+    #main-container {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-around;
+      align-items: flex-start;
+    }
+
+    #map {
+      height: 60vh;
+      width: 45%;
+      border-radius: 10px;
+      box-shadow: 0 0 20px #00bcd4;
+      z-index: 2;
+    }
+
+    #panel {
+      width: 45%;
+      background: rgba(255,255,255,0.08);
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #00bcd4;
+    }
+
+    select, button {
+      padding: 8px 12px;
+      margin: 5px;
+      border: 1px solid #00ffff77;
+      background: #0f2a3a;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #008c9e;
+    }
+
+    #particleCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    canvas.chart {
+      margin-top: 15px;
+      max-width: 600px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>🌆 城市呼吸 Urban Pulse</header>
+
+  <canvas id="particleCanvas"></canvas>
+
+  <div id="main-container">
+    <div id="map"></div>
+
+    <div id="panel">
+      <p>选择城市与指标：</p>
+      <select id="citySelect" onchange="updateCity()">
+        <option value="singapore">新加坡</option>
+        <option value="shanghai">上海</option>
+        <option value="tokyo">东京</option>
+        <option value="dubai">迪拜</option>
+      </select>
+      <button onclick="changeMode('air')">空气质量</button>
+      <button onclick="changeMode('traffic')">交通流量</button>
+      <button onclick="changeMode('temperature')">温度变化</button>
+
+      <canvas id="chart" class="chart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // === 地图初始化 ===
+    const map = L.map('map').setView([1.3521, 103.8198], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const cityData = {
+      singapore: { coords: [1.3521, 103.8198], aqi: 45, temp: 31, traffic: 0.6 },
+      shanghai: { coords: [31.2304, 121.4737], aqi: 80, temp: 26, traffic: 0.75 },
+      tokyo: { coords: [35.6762, 139.6503], aqi: 60, temp: 24, traffic: 0.55 },
+      dubai: { coords: [25.276987, 55.296249], aqi: 90, temp: 38, traffic: 0.7 }
+    };
+
+    let marker = L.circleMarker(cityData.singapore.coords, {
+      radius: 15,
+      fillColor: "#00ffff",
+      color: "#00ffff",
+      weight: 2,
+      opacity: 0.9,
+      fillOpacity: 0.5
+    }).addTo(map);
+
+    // === Chart.js 初始化 ===
+    const ctx = document.getElementById("chart").getContext("2d");
+    const chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: Array.from({ length: 10 }, (_, i) => `T${i+1}`),
+        datasets: [{
+          label: "空气质量 (AQI)",
+          data: Array.from({ length: 10 }, () => Math.random() * 100),
+          borderColor: "#00ffff",
+          backgroundColor: "rgba(0,255,255,0.2)",
+          tension: 0.3,
+          fill: true
+        }]
+      },
+      options: {
+        plugins: { legend: { labels: { color: "white" } } },
+        scales: {
+          x: { ticks: { color: "white" } },
+          y: { ticks: { color: "white" } }
+        }
+      }
+    });
+
+    // === 更新函数 ===
+    let mode = 'air';
+    function changeMode(newMode) {
+      mode = newMode;
+      updateChart();
+    }
+
+    function updateCity() {
+      const selected = document.getElementById("citySelect").value;
+      const data = cityData[selected];
+      map.setView(data.coords, 11);
+      marker.setLatLng(data.coords);
+      updateChart();
+    }
+
+    function updateChart() {
+      const selected = document.getElementById("citySelect").value;
+      const data = cityData[selected];
+      const colors = {
+        air: "#00ffff",
+        traffic: "#ff9800",
+        temperature: "#ff4da6"
+      };
+      const titles = {
+        air: "空气质量 (AQI)",
+        traffic: "交通流量指数",
+        temperature: "温度 (°C)"
+      };
+
+      chart.data.datasets[0].borderColor = colors[mode];
+      chart.data.datasets[0].backgroundColor = colors[mode] + "33";
+      chart.data.datasets[0].label = titles[mode];
+      chart.data.datasets[0].data = Array.from({ length: 10 }, () => {
+        if (mode === "air") return data.aqi + (Math.random() - 0.5) * 20;
+        if (mode === "traffic") return data.traffic * 100 + (Math.random() - 0.5) * 10;
+        return data.temp + (Math.random() - 0.5) * 5;
+      });
+      chart.update();
+
+      // 动态背景颜色随模式变化
+      document.body.style.background = `radial-gradient(circle at 30% 30%, ${colors[mode]}22, #0a0f1c 90%)`;
+
+      // 呼吸动画
+      let growing = true;
+      let radius = 10;
+      clearInterval(window.breath);
+      window.breath = setInterval(() => {
+        radius += growing ? 0.4 : -0.4;
+        if (radius > 20) growing = false;
+        if (radius < 10) growing = true;
+        marker.setRadius(radius);
+        marker.setStyle({ color: colors[mode], fillColor: colors[mode] });
+      }, 100);
+    }
+
+    // === 粒子空气流动层 ===
+    const canvas = document.getElementById("particleCanvas");
+    const ctx2 = canvas.getContext("2d");
+    let particles = [];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      particles = Array.from({ length: 200 }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: (Math.random() - 0.5) * 0.8,
+        r: Math.random() * 2 + 1,
+        alpha: Math.random() * 0.5 + 0.3,
+        hue: Math.random() * 360
+      }));
+    }
+
+    function drawParticles() {
+      ctx2.clearRect(0, 0, canvas.width, canvas.height);
+      for (let p of particles) {
+        ctx2.beginPath();
+        ctx2.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
+        ctx2.fillStyle = `hsla(${p.hue}, 80%, 60%, ${p.alpha})`;
+        ctx2.fill();
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        p.hue += 0.5;
+      }
+      requestAnimationFrame(drawParticles);
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    drawParticles();
+    updateChart();
+  </script>
+</body>
+</html>
