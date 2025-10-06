@@ -8,7 +8,7 @@
 <thead style="background:#f3f6f9">
 <tr>
 <th style="text-align:left">读数项<br><small style="color:#666;font-weight:normal">Reading Type</small></th>
-<th>National</th><th>North</th><th>South</th><th>East</th><th>West</th><th>Central</th>
+<th>North</th><th>South</th><th>East</th><th>West</th><th>Central</th>
 </tr>
 </thead>
 <tbody id="tb"></tbody>
@@ -29,7 +29,7 @@ const KEYS=[
   ["PSI 24小时指数","PSI 24-hour","psi_twenty_four_hourly"],
   ["O₃ 8小时最大值","O₃ 8-hour max","o3_eight_hour_max"]
 ];
-const REG=["national","north","south","east","west","central"];
+const REG=["north","south","east","west","central"];
 
 (async()=>{
   let d;
@@ -37,7 +37,7 @@ const REG=["national","north","south","east","west","central"];
     const r=await fetch("https://api.data.gov.sg/v1/environment/psi",{cache:"no-store"});
     d=await r.json();
   }catch(e){
-    document.getElementById("tb").innerHTML="<tr><td colspan='7'>获取失败</td></tr>";return;
+    document.getElementById("tb").innerHTML="<tr><td colspan='6'>获取失败</td></tr>";return;
   }
   const rd=d?.items?.[0]?.readings||{};
   const tb=document.getElementById("tb");
