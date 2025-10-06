@@ -1,13 +1,18 @@
 <!DOCTYPE html><html lang="zh"><meta charset="utf-8">
 <title>PSI 实时读数（data.gov.sg）</title>
-<body style="font-family:system-ui;margin:20px;font-size:14px">
-<h3>PSI 实时读数（data.gov.sg）</h3>
-<div>API: <code>https://api.data.gov.sg/v1/environment/psi</code></div>
-<table border="1" cellspacing="0" cellpadding="6">
-<thead><tr>
-<th>读数项<br><small>Reading Type</small></th>
-<th>national</th><th>north</th><th>south</th><th>east</th><th>west</th><th>central</th>
-</tr></thead><tbody id="tb"></tbody></table>
+<body style="font-family:'Segoe UI','Noto Sans SC',sans-serif;margin:40px;color:#222;background:#fafbfc;">
+<h2 style="margin-bottom:4px">新加坡 PSI 实时读数</h2>
+<p style="margin-top:0;color:#555">数据源：<code>https://api.data.gov.sg/v1/environment/psi</code></p>
+
+<table border="1" cellspacing="0" cellpadding="8" style="border-collapse:collapse;width:100%;max-width:900px;background:white;box-shadow:0 0 8px rgba(0,0,0,.1)">
+<thead style="background:#f3f6f9">
+<tr>
+<th style="text-align:left">读数项<br><small style="color:#666;font-weight:normal">Reading Type</small></th>
+<th>National</th><th>North</th><th>South</th><th>East</th><th>West</th><th>Central</th>
+</tr>
+</thead>
+<tbody id="tb"></tbody>
+</table>
 
 <script>
 const KEYS=[
@@ -32,15 +37,17 @@ const REG=["national","north","south","east","west","central"];
     const r=await fetch("https://api.data.gov.sg/v1/environment/psi",{cache:"no-store"});
     d=await r.json();
   }catch(e){
-    tb.innerHTML=`<tr><td colspan="7">获取失败</td></tr>`;return;
+    document.getElementById("tb").innerHTML="<tr><td colspan='7'>获取失败</td></tr>";return;
   }
   const rd=d?.items?.[0]?.readings||{};
   const tb=document.getElementById("tb");
-  KEYS.forEach(([cn,en,k])=>{
-    let row=`<td><div style='font-size:16px'>${cn}</div><div style='font-size:12px;color:#555'>${en}<br><small>${k}</small></div></td>`;
+  KEYS.forEach(([cn,en,k],i)=>{
+    const bg=i%2?"#f9fbfd":"white";
+    let row=`<td style='text-align:left;background:${bg}'><div style='font-size:16px;font-weight:600'>${cn}</div>
+             <div style='font-size:12px;color:#666'>${en}<br><small>${k}</small></div></td>`;
     REG.forEach(r=>{
       const v=rd?.[k]?.[r];
-      row+=`<td>${v==null?'—':(+v).toFixed(1)}</td>`;
+      row+=`<td style='text-align:right;background:${bg}'>${v==null?'—':(+v).toFixed(1)}</td>`;
     });
     tb.insertAdjacentHTML("beforeend","<tr>"+row+"</tr>");
   });
