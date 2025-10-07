@@ -1,21 +1,59 @@
 <!DOCTYPE html><html lang="zh"><meta charset="utf-8">
-<title>PSI 实时读数（data.gov.sg）</title>
-<body style="font-family:'Segoe UI','Noto Sans SC',sans-serif;margin:40px;color:#222;background:#fafbfc;">
-<h2 style="margin-bottom:4px">新加坡 PSI 实时读数</h2>
-<p style="margin-top:0;color:#555">数据源：<code>https://api.data.gov.sg/v1/environment/psi</code></p>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PSI 实时读数 · data.gov.sg</title>
+<style>
+body{
+  background:#0e1117;color:#fff;font-family:'Segoe UI','Noto Sans SC',sans-serif;
+  margin:40px;line-height:1.5
+}
+h1{text-align:center;font-size:24px;margin-bottom:6px}
+p{color:#aaa;text-align:center;font-size:13px;margin-bottom:20px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+th,td{border:1px solid #222;padding:8px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+thead{background:#1a1f29}
+tbody tr:nth-child(2n){background:#161b22}
+.cn{font-size:15px;font-weight:600;color:#fff}
+.en{font-size:12px;color:#aaa}
+.key{font-size:11px;color:#777}
+.statusbar{
+  display:flex;justify-content:space-between;align-items:center;
+  background:#161b22;border:1px solid #30363d;border-radius:8px;
+  padding:10px 14px;margin-bottom:20px
+}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:#777}
+.ok{color:#3fb950}.ok .dot{background:#3fb950}
+.err{color:#f85149}.err .dot{background:#f85149}
+.warn{color:#f0b43f}.warn .dot{background:#f0b43f}
+button{
+  background:#58a6ff;color:#fff;border:none;border-radius:6px;
+  padding:6px 12px;font-weight:600;cursor:pointer
+}
+.errmsg{color:#f85149;text-align:center;margin-top:8px}
+</style>
 
-<table border="1" cellspacing="0" cellpadding="8" style="border-collapse:collapse;width:100%;max-width:900px;background:white;box-shadow:0 0 8px rgba(0,0,0,.1)">
-<thead style="background:#f3f6f9">
-<tr>
-<th style="text-align:left">读数项<br><small style="color:#666;font-weight:normal">Reading Type</small></th>
+<body>
+<h1>新加坡 PSI 实时读数</h1>
+<p>数据源：<code>https://api.data.gov.sg/v1/environment/psi</code></p>
+
+<div class="statusbar">
+  <div>
+    <span id="badge" class="badge"><span class="dot"></span><span id="btxt">待命</span></span>
+    <span style="margin-left:10px">HTTP:<b id="http">—</b> 延迟:<b id="lat">—</b> 时间:<b id="ts">—</b> 网络:<b id="net">—</b></span>
+  </div>
+  <button id="refresh">刷新</button>
+</div>
+
+<table>
+<thead><tr>
+<th>读数项<br><small>Reading Type</small></th>
 <th>North</th><th>South</th><th>East</th><th>West</th><th>Central</th>
-</tr>
-</thead>
-<tbody id="tb"></tbody>
-</table>
+</tr></thead><tbody id="tb"></tbody></table>
+<div id="err" class="errmsg"></div>
 
 <script>
-const KEYS=[
+const ROWS=[
   ["臭氧子指数","O₃ Sub-index","o3_sub_index"],
   ["PM10 24小时平均","PM10 24-hour","pm10_twenty_four_hourly"],
   ["PM10 子指数","PM10 Sub-index","pm10_sub_index"],
@@ -30,27 +68,38 @@ const KEYS=[
   ["O₃ 8小时最大值","O₃ 8-hour max","o3_eight_hour_max"]
 ];
 const REG=["north","south","east","west","central"];
+const $tb=document.getElementById("tb"),$badge=document.getElementById("badge"),
+$btxt=document.getElementById("btxt"),$http=document.getElementById("http"),
+$lat=document.getElementById("lat"),$ts=document.getElementById("ts"),
+$net=document.getElementById("net"),$err=document.getElementById("err");
+document.getElementById("refresh").onclick=fetchPSI;
+window.addEventListener("online",()=>{$net.textContent="online"});
+window.addEventListener("offline",()=>{$net.textContent="offline"});
 
-(async()=>{
-  let d;
+function badge(c,t){$badge.className="badge "+c;$btxt.textContent=t}
+
+async function fetchPSI(){
+  badge("", "连接中…");$err.textContent="";
+  const t0=performance.now();
   try{
     const r=await fetch("https://api.data.gov.sg/v1/environment/psi",{cache:"no-store"});
-    d=await r.json();
-  }catch(e){
-    document.getElementById("tb").innerHTML="<tr><td colspan='6'>获取失败</td></tr>";return;
-  }
-  const rd=d?.items?.[0]?.readings||{};
-  const tb=document.getElementById("tb");
-  KEYS.forEach(([cn,en,k],i)=>{
-    const bg=i%2?"#f9fbfd":"white";
-    let row=`<td style='text-align:left;background:${bg}'><div style='font-size:16px;font-weight:600'>${cn}</div>
-             <div style='font-size:12px;color:#666'>${en}<br><small>${k}</small></div></td>`;
-    REG.forEach(r=>{
-      const v=rd?.[k]?.[r];
-      row+=`<td style='text-align:right;background:${bg}'>${v==null?'—':(+v).toFixed(1)}</td>`;
-    });
-    tb.insertAdjacentHTML("beforeend","<tr>"+row+"</tr>");
+    const t1=performance.now();
+    $http.textContent=r.status;$lat.textContent=`${Math.round(t1-t0)}ms`;
+    if(!r.ok){badge("err","失败");throw new Error("HTTP "+r.status)}
+    const d=await r.json(),i=d.items[0];$ts.textContent=new Date(i.update_timestamp).toLocaleString("zh-SG");
+    render(i.readings);badge("ok","已连接");
+  }catch(e){badge("err","错误");$err.textContent="获取失败："+e.message}
+  $net.textContent=navigator.onLine?"online":"offline";
+}
+
+function render(r){
+  $tb.innerHTML="";
+  ROWS.forEach(([cn,en,k])=>{
+    let tr=`<td><div class='cn'>${cn}</div><div class='en'>${en}</div><div class='key'>${k}</div></td>`;
+    REG.forEach(z=>tr+=`<td>${r[k]?.[z]==null?'—':(+r[k][z]).toFixed(1)}</td>`);
+    $tb.insertAdjacentHTML("beforeend","<tr>"+tr+"</tr>");
   });
-})();
+}
+fetchPSI();
 </script>
 </body></html>
